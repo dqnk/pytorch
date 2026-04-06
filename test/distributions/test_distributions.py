@@ -64,6 +64,7 @@ from torch.distributions import (
     HalfNormal,
     Independent,
     InverseGamma,
+    InverseWeibull,
     kl_divergence,
     Kumaraswamy,
     Laplace,
@@ -805,6 +806,21 @@ def _get_examples():
             ],
         ),
         Example(
+            InverseWeibull,
+            [
+                {
+                    "loc": torch.randn(5, 5, requires_grad=True),
+                    "scale": torch.randn(5, 5).abs().requires_grad_(),
+                    "concentration": torch.randn(5, 5).abs().requires_grad_(),
+                },
+                {
+                    "loc": torch.randn(1, requires_grad=True),
+                    "scale": torch.randn(1).abs().requires_grad_(),
+                    "concentration": torch.randn(1).abs().requires_grad_(),
+                },
+            ],
+        ),
+        Example(
             GeneralizedPareto,
             [
                 {
@@ -1211,6 +1227,21 @@ def _get_bad_examples():
                 {
                     "concentration": torch.tensor([1.0, 1.0], requires_grad=True),
                     "rate": torch.tensor([0.0, 0.0], requires_grad=True),
+                },
+            ],
+        ),
+        Example(
+            InverseWeibull,
+            [
+                {
+                    "loc": torch.tensor([1.0, 1.0], requires_grad=True),
+                    "scale": torch.tensor([0.0, 0.0], requires_grad=True),
+                    "concentration": torch.tensor([1.0, 1.0], requires_grad=True),
+                },
+                {
+                    "loc": torch.tensor([1.0, 1.0], requires_grad=True),
+                    "scale": torch.tensor([1.0, 1.0], requires_grad=True),
+                    "concentration": torch.tensor([-1.0, -100.0], requires_grad=True),
                 },
             ],
         ),
@@ -5167,6 +5198,21 @@ class TestDistributionShapes(DistributionsTestCase):
         simplex_sample = simplex_sample / simplex_sample.sum(-1).unsqueeze(-1)
         self.assertEqual(dist.log_prob(simplex_sample).size(), torch.Size((3, 3)))
 
+    def test_inverseweibull_shape_scalar_params(self):
+        inverse_weibull = InverseWeibull(1, 1, 1)
+        self.assertEqual(inverse_weibull._batch_shape, torch.Size())
+        self.assertEqual(inverse_weibull._event_shape, torch.Size())
+        self.assertEqual(inverse_weibull.sample().size(), torch.Size())
+        self.assertEqual(inverse_weibull.sample((3, 2)).size(), torch.Size((3, 2)))
+        self.assertEqual(
+            inverse_weibull.log_prob(self.tensor_sample_1 + 1).size(),
+            torch.Size((3, 2)),
+        )
+        self.assertEqual(
+            inverse_weibull.log_prob(self.tensor_sample_2 + 1).size(),
+            torch.Size((3, 2, 3)),
+        )
+
     def test_mixture_same_family_shape(self):
         dist = MixtureSameFamily(
             Categorical(torch.rand(5)), Normal(torch.randn(5), torch.rand(5))
@@ -6475,6 +6521,12 @@ class TestAgainstScipy(DistributionsTestCase):
             (
                 InverseGamma(positive_var, positive_var2),
                 scipy.stats.invgamma(positive_var, scale=positive_var2),
+            ),
+            (
+                InverseWeibull(positive_var.clamp(3), positive_var2, random_var),
+                scipy.stats.invweibull(
+                    c=positive_var.clamp(3), loc=random_var, scale=positive_var2
+                ),
             ),
             (
                 Laplace(random_var, positive_var2),
